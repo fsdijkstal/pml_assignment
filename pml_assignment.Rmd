@@ -1,0 +1,85 @@
+---
+title: "Practical Machine Learning Assignment"
+author: "Felix Dijkstal"
+date: "2022-09-19"
+output:
+  html_document:
+    df_print: paged
+---
+## Load libraries
+First we load the required libraries. 
+```{r setup, echo = FALSE}
+library(dplyr)
+library(knitr)
+library(caret)
+library(randomForest)
+```
+
+## Load data
+We set the seed for reproducibility. While importing the provided training and test data we also specify the strings that should be read as missing values as the data is somewhat messy in this regard. To get a sense of the data we check the number of observations per group. It seems like the data is slightly skewed towards group A but not to an extent that would impact the model.  
+```{r}
+set.seed(666)
+
+training_data = read.csv('/Users/felixdijkstal/Downloads/pml-training.csv', 
+                         na.strings = c("NA","#DIV/0!",""))
+test_data = read.csv('/Users/felixdijkstal/Downloads/pml-testing.csv', 
+                     na.strings = c("NA","#DIV/0!",""))
+
+# Inspect data 
+training_data %>%
+  group_by(classe) %>%
+  summarise(n = n())
+```
+
+## Clean data
+Prior to building the model it is necessary to select only the variables that are needed to predict our outcome variable 'classe'. First, we drop the variables that are obviously not predictors. Secondly, we find that several variables contain little to no data (near-zero), and these must be dropped as well. Finally, we transform 'classe' into a factor. 
+```{r}
+# Drop unnecessary variables
+training_data = training_data %>%
+  select(-X, -user_name, -contains('timestamp'), -new_window, -num_window)
+test_data = test_data %>%
+  select(-X, -user_name, -contains('timestamp'), -new_window, -num_window, -problem_id)
+
+# Drop near zero variables
+training_data = training_data[, colSums(is.na(training_data)) == 0]
+test_data = test_data[, colSums(is.na(test_data)) == 0]
+
+# Make 'classe' factor
+training_data = training_data %>%
+  mutate(classe = as.factor(classe))
+```
+
+## Cross validation
+The model will be cross validated as follows. First we split the training data into 'training' and 'testing' sub-samples. First, the model will tested on the 'testing' sub-sample and secondly on the original testing data. 
+
+## Build model
+We split the training data into a 'training' and 'testing' sub-sample accounting for 70% and 30% of the training data respectively. We then fit a random forest model on the training sub-sample, using 'classe' as the outcome variable and all other variables as predictors. After fitting the model, we use the model to predict the 'testing' sub-sample and compare it to the actual values of 'classe'. The corresponding confusion matrix shows that the accuracy of the model is 0.99 meaning that we would expect the out of sample error to be very low (less than 0.01).
+```{r}
+# Split data
+inTrain = createDataPartition(training_data$classe, p = 0.7, list = F)
+training = training_data[inTrain,]
+testing = training_data[-inTrain,]
+
+# Fit model
+model = randomForest(classe ~ ., data = training, type = 'class')
+
+# Predict the test sub-sample
+predictions = predict(model, testing)
+confusionMatrix(predictions, testing$classe)
+```
+
+
+```{r}
+plot(model)
+```
+
+
+## Predict
+Given the accuracy of our model, we can use it to predict the 20 test cases. 
+```{r}
+predictions2 = predict(model, test_data, type = 'class')
+write.csv(predictions2, 'pml_assignment_predictions.csv')
+```
+
+
+
